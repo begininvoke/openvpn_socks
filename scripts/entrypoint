@@ -1,0 +1,59 @@
+#!/usr/bin/env sh
+
+set -e
+
+TEMP_DIR="$(mktemp -d)"
+
+if [ ! -f "${OPENVPN_CONFIG_FILE}" ] ; then
+    echo "No OpenVPN config. Exiting."
+    exit 1
+fi
+
+# Add ovpn user/pass
+if [ -n "${OPENVPN_USERNAME}" ]; then
+    echo "$OPENVPN_USERNAME" >"${TEMP_DIR}/openvpn-credentials.txt"
+    echo "$OPENVPN_PASSWORD" >>"${TEMP_DIR}/openvpn-credentials.txt"
+    chmod 600 "${TEMP_DIR}/openvpn-credentials.txt"
+
+    grep -v "auth-user-pass" <"${OPENVPN_CONFIG_FILE}" >"${TEMP_DIR}/config.ovpn"
+    echo "auth-user-pass ${TEMP_DIR}/openvpn-credentials.txt" >>"${TEMP_DIR}/config.ovpn"
+fi
+
+if [ ! -f "${TEMP_DIR}/config.ovpn" ]; then
+    cp "${OPENVPN_CONFIG_FILE}" "${TEMP_DIR}/config.ovpn"
+fi
+
+# Configure SOCKS port
+# shellcheck disable=SC2016
+envsubst '$SOCKS_PORT' </etc/sockd.conf >/tmp/sockd.conf
+mv /tmp/sockd.conf /etc/sockd.conf
+
+# Ensure external connections via docker network find their way back
+docker_ip=$(ip addr show eth0 | awk '$1 == "inet" {gsub(/\/.*$/, "", $2); print $2}')
+docker_gw=$(ip route | awk '/default/ {print $3}')
+ip rule add from "$docker_ip" table 10
+ip route add table 10 default via "$docker_gw" table 10
+
+# Warn only if config asks for auth but credentials are missing
+if grep -q "auth-user-pass" "${OPENVPN_CONFIG_FILE}" && [ -z "${OPENVPN_USERNAME}" ]; then
+    echo "WARNING: Config contains auth-user-pass but OPENVPN_USERNAME is not set. Set OPENVPN_USERNAME and OPENVPN_PASSWORD."
+fi
+
+# Reconnect OpenVPN at a random interval between 2 and 3 hours (disconnect and make new connection)
+# Runs in background; sends SIGUSR1 to PID 1 (openvpn) to trigger soft restart
+(
+    while true; do
+        sleep_sec=$(awk 'BEGIN{srand(); r=7200+int(3600*rand()); print r}')
+        sleep "$sleep_sec"
+        echo "Reconnect timer: sending SIGUSR1 to OpenVPN (disconnect and reconnect)."
+        kill -USR1 1 2>/dev/null || true
+    done
+) &
+
+exec openvpn \
+    --config "${TEMP_DIR}/config.ovpn" \
+    --verb 6 \
+    --connect-retry-max 5 \
+    --resolv-retry 5 \
+    --script-security 2 \
+    --up /usr/local/bin/up
