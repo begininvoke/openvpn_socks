@@ -9,14 +9,21 @@ if [ ! -f "${OPENVPN_CONFIG_FILE}" ] ; then
     exit 1
 fi
 
-# Add ovpn user/pass
-if [ -n "${OPENVPN_USERNAME}" ]; then
+# Add ovpn user/pass: prefer credentials file from docker-compose, else env vars
+CREDS_FILE=""
+if [ -n "${OPENVPN_CREDENTIALS_FILE}" ] && [ -f "${OPENVPN_CREDENTIALS_FILE}" ]; then
+    cp "${OPENVPN_CREDENTIALS_FILE}" "${TEMP_DIR}/openvpn-credentials.txt"
+    chmod 600 "${TEMP_DIR}/openvpn-credentials.txt"
+    CREDS_FILE="${TEMP_DIR}/openvpn-credentials.txt"
+elif [ -n "${OPENVPN_USERNAME}" ]; then
     echo "$OPENVPN_USERNAME" >"${TEMP_DIR}/openvpn-credentials.txt"
     echo "$OPENVPN_PASSWORD" >>"${TEMP_DIR}/openvpn-credentials.txt"
     chmod 600 "${TEMP_DIR}/openvpn-credentials.txt"
-
+    CREDS_FILE="${TEMP_DIR}/openvpn-credentials.txt"
+fi
+if [ -n "$CREDS_FILE" ]; then
     grep -v "auth-user-pass" <"${OPENVPN_CONFIG_FILE}" >"${TEMP_DIR}/config.ovpn"
-    echo "auth-user-pass ${TEMP_DIR}/openvpn-credentials.txt" >>"${TEMP_DIR}/config.ovpn"
+    echo "auth-user-pass $CREDS_FILE" >>"${TEMP_DIR}/config.ovpn"
 fi
 
 if [ ! -f "${TEMP_DIR}/config.ovpn" ]; then
@@ -35,8 +42,8 @@ ip rule add from "$docker_ip" table 10
 ip route add table 10 default via "$docker_gw" table 10
 
 # Warn only if config asks for auth but credentials are missing
-if grep -q "auth-user-pass" "${OPENVPN_CONFIG_FILE}" && [ -z "${OPENVPN_USERNAME}" ]; then
-    echo "WARNING: Config contains auth-user-pass but OPENVPN_USERNAME is not set. Set OPENVPN_USERNAME and OPENVPN_PASSWORD."
+if grep -q "auth-user-pass" "${OPENVPN_CONFIG_FILE}" && [ -z "$CREDS_FILE" ]; then
+    echo "WARNING: Config contains auth-user-pass but no credentials. Mount openvpn-credentials.txt or set OPENVPN_USERNAME and OPENVPN_PASSWORD."
 fi
 
 # Reconnect OpenVPN at a random interval between 2 and 3 hours (disconnect and make new connection)

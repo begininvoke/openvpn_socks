@@ -10,13 +10,13 @@ services:
             - NET_ADMIN
         devices:
             - /dev/net/tun
-        dns:
-            - 8.8.8.8
-            - 4.2.2.4
         volumes:
             - ./config.ovpn:/config/config.ovpn
+            # Optional: use a credentials file (line 1 = username, line 2 = password) instead of env vars
+            - ./openvpn-credentials.txt:/config/openvpn-credentials.txt:ro
         environment:
-            # Create a .env file with these values
+            # Use credentials file at /config/openvpn-credentials.txt if mounted; else use .env:
+            - OPENVPN_CREDENTIALS_FILE=/config/openvpn-credentials.txt
             - OPENVPN_USERNAME=${OPENVPN_USERNAME}
             - OPENVPN_PASSWORD=${OPENVPN_PASSWORD}
         ports:
