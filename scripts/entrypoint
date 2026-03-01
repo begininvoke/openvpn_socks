@@ -12,7 +12,8 @@ fi
 # Add ovpn user/pass: prefer credentials file from docker-compose, else env vars
 CREDS_FILE=""
 if [ -n "${OPENVPN_CREDENTIALS_FILE}" ] && [ -f "${OPENVPN_CREDENTIALS_FILE}" ]; then
-    cp "${OPENVPN_CREDENTIALS_FILE}" "${TEMP_DIR}/openvpn-credentials.txt"
+    # Normalize: strip CRLF, keep only line 1 (user) and 2 (pass) so server does not reject auth
+    sed 's/\r$//' "${OPENVPN_CREDENTIALS_FILE}" | head -n 2 >"${TEMP_DIR}/openvpn-credentials.txt"
     chmod 600 "${TEMP_DIR}/openvpn-credentials.txt"
     CREDS_FILE="${TEMP_DIR}/openvpn-credentials.txt"
 elif [ -n "${OPENVPN_USERNAME}" ]; then
@@ -60,7 +61,7 @@ fi
 exec openvpn \
     --config "${TEMP_DIR}/config.ovpn" \
     --verb 6 \
-    --connect-retry-max 5 \
+    --connect-retry-max 0 \
     --resolv-retry 5 \
     --script-security 2 \
     --up /usr/local/bin/up
