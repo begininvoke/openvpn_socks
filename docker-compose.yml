@@ -14,11 +14,15 @@ services:
             - ./config.ovpn:/config/config.ovpn
             # Optional: use a credentials file (line 1 = username, line 2 = password) instead of env vars
             - ./openvpn-credentials.txt:/config/openvpn-credentials.txt:ro
+            # Optional: if .ovpn has ENCRYPTED PRIVATE KEY, mount a file with one line = key passphrase:
+            # - ./openvpn-key-passphrase.txt:/config/openvpn-key-passphrase.txt:ro
         environment:
-            # Use credentials file at /config/openvpn-credentials.txt if mounted; else use .env:
             - OPENVPN_CREDENTIALS_FILE=/config/openvpn-credentials.txt
             - OPENVPN_USERNAME=${OPENVPN_USERNAME}
             - OPENVPN_PASSWORD=${OPENVPN_PASSWORD}
+            # If .ovpn uses ENCRYPTED PRIVATE KEY: set OPENVPN_KEY_PASSPHRASE in .env, or mount openvpn-key-passphrase.txt (see volume above)
+            - OPENVPN_KEY_PASSPHRASE=${OPENVPN_KEY_PASSPHRASE}
+            - OPENVPN_KEY_PASSPHRASE_FILE=/config/openvpn-key-passphrase.txt
         ports:
             - 1080:1080
         restart: always
